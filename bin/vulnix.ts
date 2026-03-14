@@ -22,8 +22,12 @@ import { reportTerminal } from '../src/reporter/terminal'
 import { reportJSON } from '../src/reporter/json'
 import { reportHTML } from '../src/reporter/html'
 import { configManager } from '../src/config'
+import { Spinner, neonText, gradientBar } from '../src/reporter/spinner'
 
 const program = new Command()
+
+const RESET = '\x1b[0m'
+const BOLD = '\x1b[1m'
 
 async function getApiKey(options: any): Promise<string | undefined> {
   if (options.apiKey) {
@@ -41,10 +45,18 @@ async function getApiKey(options: any): Promise<string | undefined> {
   }
   
   if (options.ai || options.full) {
-    console.log('\n🔐 First time using AI features!')
-    console.log('Please enter your Mistral API key.')
-    console.log('Get one free at: https://console.mistral.ai/')
-    console.log('(This will be saved for future use)\n')
+    console.log('')
+    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log(neonText('  🔐 VULNIX AI SECURITY SYSTEM ', 'magenta') + neonText('v1.1.0', 'cyan'))
+    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log('')
+    console.log(neonText('  ⚡ First time activation detected!', 'yellow'))
+    console.log('')
+    console.log('  📡 Connecting to Mistral AI...')
+    console.log('  🌐 Endpoint: https://console.mistral.ai/')
+    console.log('')
+    console.log(neonText('  Enter your Mistral API key to unlock AI features:', 'cyan'))
+    console.log('')
     
     const readline = require('readline').createInterface({
       input: process.stdin,
@@ -52,13 +64,16 @@ async function getApiKey(options: any): Promise<string | undefined> {
     })
     
     return new Promise((resolve) => {
-      readline.question('Enter your Mistral API key: ', (answer: string) => {
+      readline.question('  > ', (answer: string) => {
         readline.close()
         const key = answer.trim()
         if (key) {
           configManager.setApiKey(key)
-          console.log('✅ API key saved!\n')
+          console.log('')
+          console.log(neonText('  ✓ API key secured & encrypted', 'green'))
+          console.log(neonText('  ✓ System ready for neural scanning', 'green'))
         }
+        console.log('')
         resolve(key || undefined)
       })
     })
@@ -70,7 +85,7 @@ async function getApiKey(options: any): Promise<string | undefined> {
 program
   .name('vulnix')
   .description('CLI security scanner for AI-generated and vibe-coded projects')
-  .version('1.0.0')
+  .version('1.1.0')
 
 program
   .command('scan')
@@ -91,10 +106,16 @@ program
     const apiKey = await getApiKey(options)
     
     if ((options.ai || options.full) && !apiKey) {
-      console.error('Error: API key required for AI features')
-      console.error('Set MISTRAL_API_KEY env variable or use --api-key flag')
+      console.error(neonText('✗ API key required for AI features', 'red'))
+      console.error('  Set MISTRAL_API_KEY env variable or use --api-key flag')
       process.exit(1)
     }
+
+    console.log('')
+    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log(neonText('  ⚡ VULNIX SECURITY SCANNER ', 'magenta') + neonText('v1.1.0', 'cyan'))
+    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log('')
 
     const scanner = new Scanner({
       path: scanPath,
@@ -119,27 +140,45 @@ program
     scanner.registerDetector(new AIDetector())
     scanner.registerDetector(new BackdoorDetector())
 
-    console.log(`Scanning ${scanPath}...`)
+    const scanSpinner = new Spinner(`Scanning ${scanPath}...`)
+    scanSpinner.start()
 
     const fileContents = new Map<string, string>()
     let result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles, apiKey }, fileContents)
 
+    scanSpinner.stop('Scan complete')
+
     if (options.ai && apiKey) {
-      console.log('Verifying findings with AI...')
+      const verifySpinner = new Spinner('Initializing neural network...')
+      verifySpinner.start()
       
       const initialCount = result.findings.length
       
+      await new Promise(r => setTimeout(r, 500))
+      verifySpinner.stop('Neural network online')
+      
+      console.log(neonText('  ◈ Verifying findings with DevStral AI...', 'magenta'))
+      
+      const verify2Spinner = new Spinner('Analyzing code patterns...')
+      verify2Spinner.start()
+      
       result.findings = await verifyFindings(result.findings, fileContents, apiKey)
+      
+      verify2Spinner.stop('Analysis complete')
       
       result.confirmedCount = result.findings.filter(f => f.aiStatus === 'confirmed').length
       result.dismissedCount = initialCount - result.findings.length
       result.aiVerified = true
 
       if (options.full) {
-        console.log('Running deep scan...')
+        console.log('')
+        const deepSpinner = new Spinner('Initiating deep scan protocol...')
+        deepSpinner.start()
         
         const files = Array.from(fileContents.entries()).map(([path, content]) => ({ path, content }))
         const aiFindings = await deepScan(files, apiKey)
+        
+        deepSpinner.stop('Deep scan complete')
         
         result.findings.push(...aiFindings)
         result.newFromAI = aiFindings.length
@@ -163,6 +202,8 @@ program
   .command('init')
   .description('Generate .vulnixrc config file')
   .action(() => {
+    console.log('')
+    console.log(neonText('  ⚡ Initializing Vulnix config...', 'cyan'))
     const config = {
       ignore: ['node_modules', '.git', 'dist', 'generated'],
       severity: 'low',
@@ -170,7 +211,7 @@ program
     }
     
     fs.writeFileSync('.vulnixrc', JSON.stringify(config, null, 2))
-    console.log('Created .vulnixrc configuration file')
+    console.log(neonText('  ✓ Config file generated', 'green'))
   })
 
 program
@@ -180,25 +221,32 @@ program
   .option('--show-key', 'Show saved API key (masked)')
   .option('--clear-key', 'Clear saved API key')
   .action((options) => {
+    console.log('')
+    console.log(neonText('═'.repeat(40), 'cyan'))
+    console.log(neonText('  ⚡ VULNIX CONFIG', 'magenta'))
+    console.log(neonText('═'.repeat(40), 'cyan'))
+    console.log('')
+    
     if (options.setKey) {
       configManager.setApiKey(options.setKey)
-      console.log('✅ API key saved!')
+      console.log(neonText('  ✓ API key encrypted & stored', 'green'))
     } else if (options.showKey) {
       const key = configManager.getApiKey()
       if (key) {
-        console.log(`API key: ${key.substring(0, 7)}...${key.substring(key.length - 4)}`)
+        console.log(neonText(`  Key: ${key.substring(0, 7)}...${key.substring(key.length - 4)}`, 'cyan'))
       } else {
-        console.log('No API key saved')
+        console.log(neonText('  No API key configured', 'yellow'))
       }
     } else if (options.clearKey) {
       configManager.setApiKey('')
-      console.log('✅ API key cleared')
+      console.log(neonText('  ✓ API key cleared', 'green'))
     } else {
-      console.log('vulnix config options:')
-      console.log('  --set-key <key>  Set Mistral API key')
-      console.log('  --show-key        Show saved API key (masked)')
-      console.log('  --clear-key       Clear saved API key')
+      console.log('  Options:')
+      console.log('    --set-key <key>   Set API key')
+      console.log('    --show-key        Show key')
+      console.log('    --clear-key       Clear key')
     }
+    console.log('')
   })
 
 program.parse()
