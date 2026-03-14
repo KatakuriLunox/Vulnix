@@ -48,74 +48,53 @@ function setupInterruptHandler(): void {
 }
 
 async function getApiKey(options: any): Promise<string | undefined> {
-  if (options.apiKey) {
-    return options.apiKey
-  }
-  
+  if (options.apiKey) return options.apiKey
   const envKey = process.env.MISTRAL_API_KEY
-  if (envKey) {
-    return envKey
-  }
-  
+  if (envKey) return envKey
   const savedKey = configManager.getApiKey()
-  if (savedKey) {
-    return savedKey
-  }
+  if (savedKey) return savedKey
   
   if (options.ai || options.full) {
     console.log('')
     console.log(neonText('═'.repeat(50), 'cyan'))
-    console.log(neonText('  🔐 VULNIX AI SECURITY SYSTEM ', 'magenta') + neonText('v1.2.0', 'cyan'))
+    console.log(neonText('  🔐 VULNIX AI ACTIVATION', 'magenta'))
     console.log(neonText('═'.repeat(50), 'cyan'))
     console.log('')
-    console.log(neonText('  ⚡ First time activation detected!', 'yellow'))
-    console.log('')
-    console.log('  📡 Connecting to Mistral AI...')
-    console.log('  🌐 Endpoint: https://console.mistral.ai/')
-    console.log('')
-    console.log(neonText('  Enter your Mistral API key to unlock AI features:', 'cyan'))
-    console.log('')
+    console.log(neonText('  Enter your Mistral API key:', 'cyan'))
+    console.log('  https://console.mistral.ai/\n')
     
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    })
-    
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
     return new Promise((resolve) => {
       rl.question('  > ', (answer: string) => {
         rl.close()
         const key = answer.trim()
         if (key) {
           configManager.setApiKey(key)
-          console.log('')
-          console.log(neonText('  ✓ API key secured & encrypted', 'green'))
-          console.log(neonText('  ✓ System ready for neural scanning', 'green'))
+          console.log(neonText('  ✓ API key saved!\n', 'green'))
         }
-        console.log('')
         resolve(key || undefined)
       })
     })
   }
-  
   return undefined
 }
 
 program
   .name('vulnix')
-  .description('AI-powered security scanner with real-time analysis')
-  .version('1.2.0')
+  .description('AI-powered security scanner')
+  .version('1.4.0')
 
 program
   .command('scan')
-  .description('Scan a project for vulnerabilities')
+  .description('Scan for vulnerabilities')
   .argument('<path>', 'Path to scan')
-  .option('--ai', 'Use AI to verify findings')
-  .option('--full', 'AI deep scan (requires --ai)')
-  .option('-o, --output <format>', 'Output format: terminal, json, html', 'terminal')
-  .option('-s, --severity <level>', 'Minimum severity', 'info')
-  .option('-i, --ignore <paths>', 'Comma-separated paths to ignore')
-  .option('--max-files <number>', 'Maximum files to scan', '1000')
-  .option('--api-key <key>', 'Mistral API key')
+  .option('--ai', 'AI verification')
+  .option('--full', 'Deep scan')
+  .option('-o, --output <fmt>', 'Output: terminal, json, html', 'terminal')
+  .option('-s, --severity <level>', 'Min severity', 'info')
+  .option('-i, --ignore <paths>', 'Ignore paths')
+  .option('--max-files <n>', 'Max files', '1000')
+  .option('--api-key <key>', 'API key')
   .action(async (scanPath: string, options: any) => {
     setupInterruptHandler()
     
@@ -126,27 +105,16 @@ program
     const apiKey = await getApiKey(options)
     
     if ((options.ai || options.full) && !apiKey) {
-      console.error(neonText('✗ API key required for AI features', 'red'))
-      console.error('  Set MISTRAL_API_KEY or use --api-key')
+      console.error(neonText('✗ API key required', 'red'))
       process.exit(1)
     }
 
     console.log('')
-    console.log(neonText('═'.repeat(50), 'cyan'))
-    console.log(neonText('  ⚡ VULNIX SECURITY SCANNER ', 'magenta') + neonText('v1.2.0', 'cyan'))
-    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log(neonText('⚡ VULNIX v1.4.0', 'magenta'))
+    console.log(neonText('═'.repeat(40), 'cyan'))
     console.log('')
 
-    const scanner = new Scanner({
-      path: scanPath,
-      ai: options.ai || false,
-      full: options.full || false,
-      output: options.output,
-      severity,
-      ignore,
-      maxFiles,
-      apiKey
-    })
+    const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles, apiKey })
 
     scanner.registerDetector(new SecretsDetector())
     scanner.registerDetector(new InjectionDetector())
@@ -164,23 +132,12 @@ program
     scanSpinner.start()
 
     const fileContents = new Map<string, string>()
-    let result = await scanner.scan({ 
-      path: scanPath, 
-      ai: options.ai, 
-      full: options.full, 
-      output: options.output, 
-      severity, 
-      ignore, 
-      maxFiles, 
-      apiKey 
-    }, fileContents)
+    let result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles, apiKey }, fileContents)
 
-    scanSpinner.stop('Static analysis complete')
+    scanSpinner.stop('Static scan done')
 
-    if (options.output !== 'terminal') {
+    if (options.ai && apiKey) {
       result = await runAIAnalysis(result, fileContents, apiKey, options)
-    } else if (options.ai && apiKey) {
-      result = await runAIAnalysisWithDisplay(result, fileContents, apiKey, options)
     }
 
     if (options.output === 'json') {
@@ -203,50 +160,15 @@ async function runAIAnalysis(
 ): Promise<ScanResult> {
   if (!apiKey) return result
 
-  if (options.ai) {
-    result.findings = await verifyFindings(result.findings, fileContents, apiKey)
-    result.confirmedCount = result.findings.filter(f => f.aiStatus === 'confirmed').length
-    result.dismissedCount = result.staticCount - result.findings.length
-    result.aiVerified = true
-  }
-
-  if (options.full && apiKey) {
-    const files = Array.from(fileContents.entries()).map(([path, content]) => ({ path, content }))
-    const aiFindings = await deepScan(files, apiKey)
-    result.findings.push(...aiFindings)
-    result.newFromAI = aiFindings.length
-    result.confirmedCount += aiFindings.length
-  }
-
-  return result
-}
-
-async function runAIAnalysisWithDisplay(
-  result: ScanResult, 
-  fileContents: Map<string, string>, 
-  apiKey: string | undefined,
-  options: any
-): Promise<ScanResult> {
-  if (!apiKey) return result
-
   abortController = new AbortController()
-  
   console.log('')
 
   if (options.ai) {
     aiDisplay = new AIProgressDisplay()
     aiDisplay.start('verifying', result.findings.length)
 
-    const onThinking = (thought: string) => {
-      aiDisplay?.addThought(thought)
-    }
-
     const onProgress = (progress: any) => {
-      aiDisplay?.update({
-        current: progress.current,
-        total: progress.total,
-        currentFinding: progress.currentFinding
-      })
+      aiDisplay?.update({ current: progress.current, total: progress.total })
     }
 
     const initialCount = result.findings.length
@@ -256,117 +178,78 @@ async function runAIAnalysisWithDisplay(
       fileContents, 
       apiKey,
       onProgress,
-      onThinking,
+      undefined,
       abortController.signal
     )
 
     const confirmed = result.findings.filter(f => f.aiStatus === 'confirmed').length
     const dismissed = initialCount - result.findings.length
 
-    aiDisplay.update({
-      confirmed,
-      dismissed,
-      current: result.findings.length,
-      total: result.findings.length
-    })
+    aiDisplay.update({ confirmed, dismissed, current: result.findings.length, total: result.findings.length })
     aiDisplay.stop()
 
     result.confirmedCount = confirmed
     result.dismissedCount = dismissed
     result.aiVerified = true
-
     console.log('')
   }
 
   if (options.full && apiKey) {
-    const files = Array.from(fileContents.entries()).map(([path, content]) => ({ path, content }))
+    const files = Array.from(fileContents.entries()).map(([p, c]) => ({ path: p, content: c }))
     
     aiDisplay = new AIProgressDisplay()
     aiDisplay.start('deepscan', files.length)
 
-    const onThinking = (thought: string) => {
-      aiDisplay?.addThought(thought)
-    }
-
     const onProgress = (progress: any) => {
-      aiDisplay?.update({
-        current: progress.currentFile,
-        total: progress.totalFiles,
-        currentFile: progress.currentFileName
-      })
+      aiDisplay?.update({ current: progress.currentFile, total: progress.totalFiles })
     }
 
-    const aiFindings = await deepScan(files, apiKey, onProgress, onThinking, abortController.signal)
+    const aiFindings = await deepScan(files, apiKey, onProgress, undefined, abortController.signal)
     
-    aiDisplay.update({
-      findingsFound: aiFindings.length,
+    aiDisplay.update({ 
+      findingsFound: aiFindings.length, 
       confirmed: result.confirmedCount + aiFindings.length,
-      current: files.length,
-      total: files.length
+      current: files.length, 
+      total: files.length 
     })
     aiDisplay.stop()
 
     result.findings.push(...aiFindings)
     result.newFromAI = aiFindings.length
     result.confirmedCount += aiFindings.length
-
     console.log('')
   }
 
   abortController = null
   aiDisplay = null
-
   return result
 }
 
 program
   .command('init')
-  .description('Generate config file')
+  .description('Generate config')
   .action(() => {
-    console.log('')
-    console.log(neonText('  ⚡ Initializing Vulnix config...', 'cyan'))
-    const config = {
-      ignore: ['node_modules', '.git', 'dist', 'generated'],
-      severity: 'low',
-      maxFiles: 1000
-    }
-    fs.writeFileSync('.vulnixrc', JSON.stringify(config, null, 2))
-    console.log(neonText('  ✓ Config file generated', 'green'))
+    fs.writeFileSync('.vulnixrc', JSON.stringify({ ignore: ['node_modules'], severity: 'low' }, null, 2))
+    console.log(neonText('  ✓ Config created', 'green'))
   })
 
 program
   .command('config')
-  .description('Manage configuration')
+  .description('Manage config')
   .option('--set-key <key>', 'Set API key')
-  .option('--show-key', 'Show API key')
-  .option('--clear-key', 'Clear API key')
+  .option('--show-key', 'Show key')
+  .option('--clear-key', 'Clear key')
   .action((options) => {
-    console.log('')
-    console.log(neonText('═'.repeat(40), 'cyan'))
-    console.log(neonText('  ⚡ VULNIX CONFIG', 'magenta'))
-    console.log(neonText('═'.repeat(40), 'cyan'))
-    console.log('')
-    
     if (options.setKey) {
       configManager.setApiKey(options.setKey)
-      console.log(neonText('  ✓ API key stored', 'green'))
+      console.log(neonText('  ✓ Key saved', 'green'))
     } else if (options.showKey) {
       const key = configManager.getApiKey()
-      if (key) {
-        console.log(neonText(`  Key: ${key.substring(0, 7)}...${key.substring(key.length - 4)}`, 'cyan'))
-      } else {
-        console.log(neonText('  No API key', 'yellow'))
-      }
+      console.log(key ? `  ${key.substring(0, 7)}...${key.slice(-4)}` : '  No key')
     } else if (options.clearKey) {
       configManager.setApiKey('')
-      console.log(neonText('  ✓ API key cleared', 'green'))
-    } else {
-      console.log('  Options:')
-      console.log('    --set-key <key>   Set API key')
-      console.log('    --show-key        Show key')
-      console.log('    --clear-key       Clear key')
+      console.log(neonText('  ✓ Key cleared', 'green'))
     }
-    console.log('')
   })
 
 program.parse()
