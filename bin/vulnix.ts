@@ -2,7 +2,6 @@
 
 import { Command } from 'commander'
 import * as fs from 'fs'
-import * as path from 'path'
 import * as readline from 'readline'
 import { Scanner } from '../src/core/scanner'
 import { ScanResult, Severity } from '../src/types'
@@ -19,22 +18,17 @@ import { AIDetector } from '../src/detectors/ai'
 import { BackdoorDetector } from '../src/detectors/backdoor'
 import { verifyFindings } from '../src/ai/verifier'
 import { deepScan } from '../src/ai/deepscanner'
-import { reportTerminal } from '../src/reporter/terminal'
-import { reportJSON } from '../src/reporter/json'
-import { reportHTML } from '../src/reporter/html'
 import { configManager } from '../src/config'
 import { Spinner, neonText } from '../src/reporter/spinner'
-import { AIProgressDisplay } from '../src/reporter/ai-display'
+import { AIAgentDisplay, generateComprehensiveReport } from '../src/reporter/agent'
 
 const program = new Command()
 let abortController: AbortController | null = null
-let aiDisplay: AIProgressDisplay | null = null
 
 function setupInterruptHandler(): void {
   process.on('SIGINT', () => {
     if (abortController) {
       abortController.abort()
-      if (aiDisplay) aiDisplay.stop()
       console.log(neonText('\n⚠️ Scan aborted', 'yellow'))
       process.exit(130)
     }
@@ -50,8 +44,8 @@ async function getApiKey(options: any): Promise<string | undefined> {
   
   if (options.ai || options.full) {
     console.log('')
-    console.log(neonText('🔐 VULNIX AI', 'magenta'))
-    console.log(neonText('═'.repeat(30), 'cyan'))
+    console.log(neonText('🔐 VULNIX AI AGENT', 'magenta'))
+    console.log(neonText('═'.repeat(25), 'cyan'))
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
     return new Promise((resolve) => {
       rl.question('  API Key: ', (answer: string) => {
@@ -68,7 +62,7 @@ async function getApiKey(options: any): Promise<string | undefined> {
   return undefined
 }
 
-program.name('vulnix').description('AI security scanner').version('1.4.1')
+program.name('vulnix').description('AI Security Agent').version('1.6.0')
 
 program.command('scan')
   .argument('<path>', 'Path to scan')
@@ -92,10 +86,16 @@ program.command('scan')
     }
 
     console.log('')
-    console.log(neonText('⚡ VULNIX v1.4.1', 'magenta'))
-    console.log(neonText('═'.repeat(30), 'cyan'))
+    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log(neonText('    🤖 VULNIX AI SECURITY AGENT v1.5.0', 'magenta'))
+    console.log(neonText('═'.repeat(50), 'cyan'))
+
+    const agent = new AIAgentDisplay()
+    agent.start('Initializing')
+    agent.think('searching', `Initializing scan on ${scanPath}...`)
 
     const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })
+    
     scanner.registerDetector(new SecretsDetector())
     scanner.registerDetector(new InjectionDetector())
     scanner.registerDetector(new XSSDetector())
@@ -108,44 +108,71 @@ program.command('scan')
     scanner.registerDetector(new AIDetector())
     scanner.registerDetector(new BackdoorDetector())
 
-    const spinner = new Spinner(`Scanning ${scanPath}...`)
+    const spinner = new Spinner('Analyzing codebase...')
     spinner.start()
+
     const fileContents = new Map<string, string>()
+    const scanStart = Date.now()
     let result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey }, fileContents)
-    spinner.stop('Static scan done')
+    const scanTime = (Date.now() - scanStart) / 1000
+
+    spinner.stop(`Found ${result.findings.length} issues`)
+    agent.think('found', `Static analysis: ${result.findings.length} potential issues in ${result.filesScanned} files`)
 
     if (options.ai && apiKey) {
-      result = await runAI(result, fileContents, apiKey, options)
-    }
+      agent.think('analyzing', 'Starting AI verification...')
+      const aiStart = Date.now()
+      
+      result = await runAI(result, fileContents, apiKey, options, agent)
+      
+      const aiTime = (Date.now() - aiStart) / 1000
+      agent.think('concluding', `AI analysis complete in ${aiTime.toFixed(1)}s`)
 
-    if (options.output === 'json') reportJSON(result)
-    else if (options.output === 'html') reportHTML(result)
-    else reportTerminal(result)
+      if (options.output === 'json' || options.output === 'html') {
+        if (options.output === 'json') {
+          console.log(JSON.stringify(result, null, 2))
+        }
+      } else {
+        generateComprehensiveReport(
+          result.findings,
+          result.confirmedCount,
+          result.dismissedCount,
+          result.filesScanned,
+          scanTime,
+          aiTime
+        )
+      }
+    } else {
+      if (options.output === 'json') {
+        console.log(JSON.stringify(result, null, 2))
+      } else if (options.output === 'html') {
+        console.log('HTML output not implemented in agent mode')
+      } else {
+        generateComprehensiveReport(result.findings, 0, 0, result.filesScanned, scanTime, 0)
+      }
+    }
 
     process.exit(result.findings.some(f => f.severity === 'critical' || f.severity === 'high') ? 1 : 0)
   })
 
-async function runAI(result: ScanResult, fileContents: Map<string, string>, apiKey: string | undefined, options: any): Promise<ScanResult> {
+async function runAI(result: ScanResult, fileContents: Map<string, string>, apiKey: string | undefined, options: any, agent: AIAgentDisplay): Promise<ScanResult> {
   if (!apiKey) return result
   abortController = new AbortController()
 
   if (options.ai) {
-    aiDisplay = new AIProgressDisplay()
-    aiDisplay.start('verifying', result.findings.length)
+    agent.think('analyzing', `Verifying ${result.findings.length} findings with AI...`)
 
     const initialCount = result.findings.length
     result.findings = await verifyFindings(result.findings, fileContents, apiKey, 
-      (p) => aiDisplay?.updateProgress(p.current),
-      undefined,
+      (p) => agent.think('analyzing', `Analyzing finding ${p.current}/${p.total}...`),
       abortController.signal
     )
 
     const confirmed = result.findings.filter(f => f.aiStatus === 'confirmed').length
     const dismissed = initialCount - result.findings.length
     
-    for (let i = 0; i < confirmed; i++) aiDisplay?.addResult(true)
-    for (let i = 0; i < dismissed; i++) aiDisplay?.addResult(false)
-    aiDisplay.stop()
+    agent.think('found', `Confirmed ${confirmed} real vulnerabilities`)
+    agent.think('ignored', `Dismissed ${dismissed} false positives`)
 
     result.confirmedCount = confirmed
     result.dismissedCount = dismissed
@@ -154,17 +181,14 @@ async function runAI(result: ScanResult, fileContents: Map<string, string>, apiK
 
   if (options.full) {
     const files = Array.from(fileContents.entries()).map(([p, c]) => ({ path: p, content: c }))
-    aiDisplay = new AIProgressDisplay()
-    aiDisplay.start('deepscan', files.length)
+    agent.think('searching', `Deep scanning ${files.length} files for advanced vulnerabilities...`)
 
     const aiFindings = await deepScan(files, apiKey, 
-      (p) => aiDisplay?.updateProgress(p.currentFile),
-      undefined,
+      (p) => agent.think('analyzing', `Deep scanning ${p.currentFile}/${p.totalFiles}...`),
       abortController.signal
     )
     
-    aiDisplay.addFound(aiFindings.length)
-    aiDisplay.stop()
+    agent.think('found', `AI discovered ${aiFindings.length} additional issues`)
 
     result.findings.push(...aiFindings)
     result.newFromAI = aiFindings.length
@@ -172,7 +196,6 @@ async function runAI(result: ScanResult, fileContents: Map<string, string>, apiK
   }
 
   abortController = null
-  aiDisplay = null
   return result
 }
 
