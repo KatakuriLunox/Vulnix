@@ -22,7 +22,16 @@ export class Walker {
     const files: FileInfo[] = []
     const absolutePath = path.resolve(targetPath)
     
-    const stats = fs.statSync(absolutePath)
+    let stats
+    try {
+      stats = fs.statSync(absolutePath)
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException
+      if (err.code === 'ENOENT') {
+        throw new Error(`Path does not exist: ${targetPath}`)
+      }
+      throw error
+    }
     
     if (stats.isFile()) {
       const fileInfo = this.createFileInfo(absolutePath, targetPath)

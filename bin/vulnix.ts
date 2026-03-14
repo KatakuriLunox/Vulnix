@@ -87,14 +87,15 @@ program.command('scan')
 
     console.log('')
     console.log(neonText('═'.repeat(50), 'cyan'))
-    console.log(neonText('    🤖 VULNIX AI SECURITY AGENT v1.5.0', 'magenta'))
+    console.log(neonText('    🤖 VULNIX AI SECURITY AGENT v1.6.1', 'magenta'))
     console.log(neonText('═'.repeat(50), 'cyan'))
 
     const agent = new AIAgentDisplay()
     agent.start('Initializing')
     agent.think('searching', `Initializing scan on ${scanPath}...`)
 
-    const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })
+    try {
+      const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })
     
     scanner.registerDetector(new SecretsDetector())
     scanner.registerDetector(new InjectionDetector())
@@ -156,6 +157,11 @@ program.command('scan')
     }
 
     process.exit(result.findings.some(f => f.severity === 'critical' || f.severity === 'high') ? 1 : 0)
+    } catch (error) {
+      console.error('')
+      console.error(neonText('✗ Error: ' + (error instanceof Error ? error.message : 'Unknown error'), 'red'))
+      process.exit(1)
+    }
   })
 
 async function runAI(result: ScanResult, fileContents: Map<string, string>, apiKey: string | undefined, options: any, agent: AIAgentDisplay): Promise<ScanResult> {
