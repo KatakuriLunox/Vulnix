@@ -1,154 +1,91 @@
 import { neonText } from './spinner'
 
-export interface AIProgressState {
-  phase: 'init' | 'verifying' | 'deepscan' | 'complete'
+export interface AIState {
+  phase: 'idle' | 'verifying' | 'deepscan' | 'done'
   current: number
   total: number
-  currentFile?: string
-  currentFinding?: string
-  thought: string
-  findingsFound: number
   confirmed: number
   dismissed: number
+  found: number
+  thought: string
   startTime: number
-  aborted: boolean
 }
 
 export class AIProgressDisplay {
-  private state: AIProgressState
-  private renderInterval: NodeJS.Timeout | null = null
-  private lastOutput = ''
-  private initialized = false
+  private state: AIState
+  private lastLine = ''
 
   constructor() {
-    this.state = this.getInitialState()
+    this.state = this.idle()
   }
 
-  private getInitialState(): AIProgressState {
-    return {
-      phase: 'init',
-      current: 0,
-      total: 0,
-      thought: '',
-      findingsFound: 0,
-      confirmed: 0,
-      dismissed: 0,
-      startTime: Date.now(),
-      aborted: false
-    }
+  private idle(): AIState {
+    return { phase: 'idle', current: 0, total: 0, confirmed: 0, dismissed: 0, found: 0, thought: '', startTime: Date.now() }
   }
 
   start(phase: 'verifying' | 'deepscan', total: number): void {
-    this.state = {
-      ...this.getInitialState(),
-      phase,
-      total,
-      startTime: Date.now()
-    }
-    this.initialized = false
-    this.render(true)
-    this.renderInterval = setInterval(() => this.render(false), 800)
+    this.state = { ...this.idle(), phase, total }
+    this.render()
   }
 
-  update(updates: Partial<AIProgressState>): void {
-    this.state = { ...this.state, ...updates }
-    this.render(false)
+  updateProgress(current: number): void {
+    this.state.current = current
+    this.render()
   }
 
   setThought(thought: string): void {
     this.state.thought = thought
-    this.render(false)
+    this.render()
   }
 
-  addThought(thought: string): void {
-    if (thought.includes('Batch')) {
-      this.state.thought = thought
-    }
-    this.render(false)
+  addResult(confirmed: boolean): void {
+    if (confirmed) this.state.confirmed++
+    else this.state.dismissed++
+    this.render()
   }
 
-  incrementFound(): void {
-    this.state.findingsFound++
-    this.render(false)
-  }
-
-  incrementConfirmed(): void {
-    this.state.confirmed++
-    this.render(false)
-  }
-
-  incrementDismissed(): void {
-    this.state.dismissed++
-    this.render(false)
-  }
-
-  abort(): void {
-    this.state.aborted = true
-    this.stop()
+  addFound(count: number): void {
+    this.state.found += count
+    this.render()
   }
 
   stop(): void {
-    if (this.renderInterval) {
-      clearInterval(this.renderInterval)
-      this.renderInterval = null
-    }
-    this.state.phase = 'complete'
-    this.render(true)
+    this.state.phase = 'done'
+    this.render()
+    console.log('')
   }
 
-  private render(force: boolean): void {
+  private render(): void {
     const s = this.state
     const elapsed = ((Date.now() - s.startTime) / 1000).toFixed(1)
     
-    let output = ''
+    let line = ''
     
-    if (s.phase === 'verifying') {
-      output = this.renderVerification(s, elapsed)
-    } else if (s.phase === 'deepscan') {
-      output = this.renderDeepScan(s, elapsed)
-    } else if (s.phase === 'complete') {
-      output = this.renderComplete(s, elapsed)
-    }
-
-    if (output !== this.lastOutput || force || !this.initialized) {
-      if (!this.initialized) {
-        console.log('')
-        this.initialized = true
+    if (s.phase === 'verifying' || s.phase === 'deepscan') {
+      const percent = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0
+      const bar = this.renderBar(percent)
+      const label = s.phase === 'verifying' ? '🤖 AI' : '🧠 DEEP'
+      const suffix = s.phase === 'verifying' ? '' : ` files`
+      
+      line = `${neonText(label, 'magenta')} ${bar} ${percent}% | ${s.current}/${s.total}${suffix} | ${elapsed}s`
+      
+      if (s.thought) {
+        line += ` | ${s.thought}`
       }
-      process.stdout.write('\r' + output + '\n')
-      this.lastOutput = output
+    } else if (s.phase === 'done') {
+      const status = neonText('✓ DONE', 'green')
+      line = `${status} | ${s.confirmed} confirmed | ${s.dismissed} dismissed | ${s.found} found | ${elapsed}s`
+    }
+
+    if (line !== this.lastLine) {
+      process.stdout.write('\r' + line + ' '.repeat(Math.max(0, 60 - line.length)))
+      this.lastLine = line
     }
   }
 
-  private renderVerification(s: AIProgressState, elapsed: string): string {
-    const percent = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0
-    const bar = this.renderBar(percent)
-
-    return `${neonText('  🤖 AI VERIFYING', 'magenta')} ${bar} ${percent}% | ${s.current}/${s.total} | ${elapsed}s`
-  }
-
-  private renderDeepScan(s: AIProgressState, elapsed: string): string {
-    const percent = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0
-    const bar = this.renderBar(percent)
-
-    return `${neonText('  🧠 DEEP SCAN', 'magenta')} ${bar} ${percent}% | ${s.current}/${s.total} files | ${elapsed}s`
-  }
-
-  private renderComplete(s: AIProgressState, elapsed: string): string {
-    const status = s.aborted 
-      ? neonText('  ⚠️ ABORTED', 'yellow')
-      : neonText('  ✓ DONE', 'green')
-
-    return `${status} | ${s.confirmed} confirmed | ${s.dismissed} dismissed | ${elapsed}s`
-  }
-
-  private renderBar(percent: number, width: number = 15): string {
+  private renderBar(percent: number, width: number = 12): string {
     const filled = Math.floor((percent / 100) * width)
     const empty = width - filled
     return `\x1b[36m${'▓'.repeat(filled)}\x1b[90m${'░'.repeat(empty)}\x1b[0m`
-  }
-
-  getState(): AIProgressState {
-    return { ...this.state }
   }
 }
