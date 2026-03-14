@@ -34,7 +34,7 @@ export class Spinner {
       const frame = frames[this.frame % frames.length]
       const color = process.stdout.isTTY ? COLORS[this.colorIndex % COLORS.length] : ''
       const reset = '\x1b[0m'
-      process.stdout.write(`\r${color}${frame} ${this.message}${reset}`)
+      process.stdout.write('\r' + ' '.repeat(80) + '\r' + `${color}${frame} ${this.message}${reset}`)
       this.frame++
       if (this.frame % 4 === 0) this.colorIndex++
     }, 80)
@@ -48,7 +48,7 @@ export class Spinner {
     const color = '\x1b[32m'
     const reset = '\x1b[0m'
     const check = '✓'
-    process.stdout.write(`\r${color}${check}${reset} ${text || this.message}\n`)
+    process.stdout.write('\r' + ' '.repeat(80) + '\r' + `${color}${check}${reset} ${text || this.message}\n`)
   }
 
   stopError(text?: string): void {
@@ -59,7 +59,7 @@ export class Spinner {
     const color = '\x1b[31m'
     const reset = '\x1b[0m'
     const cross = '✗'
-    process.stdout.write(`\r${color}${cross}${reset} ${text || this.message}\n`)
+    process.stdout.write('\r' + ' '.repeat(80) + '\r' + `${color}${cross}${reset} ${text || this.message}\n`)
   }
 }
 

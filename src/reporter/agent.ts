@@ -61,7 +61,7 @@ export class AIAgentDisplay {
       output = `${neonText('🤖 AGENT', 'magenta')} ${icon} ${msg} | ${elapsedStr}`
     }
 
-    process.stdout.write('\r' + output + ' '.repeat(40))
+    process.stdout.write('\r' + output + ' '.repeat(60))
   }
 
   getThoughts(): AgentThought[] {
@@ -85,7 +85,7 @@ export function generateComprehensiveReport(
 
   // Executive Summary
   console.log(neonText('  📊 EXECUTIVE SUMMARY', 'cyan'))
-  console.log(neonText('  ─'.repeat(30), 'cyan'))
+  console.log(neonText('  ──────────────────────────────', 'cyan'))
   console.log(`  Files Analyzed:       ${filesScanned}`)
   console.log(`  Static Findings:     ${findings.length}`)
   console.log(`  AI Confirmed:        ${confirmedCount}`)
@@ -116,7 +116,7 @@ export function generateComprehensiveReport(
   const confirmedFindings = findings.filter(f => f.aiStatus === 'confirmed')
   
   console.log(neonText('  🎯 SECURITY SCORE', 'cyan'))
-  console.log(neonText('  ─'.repeat(30), 'cyan'))
+  console.log(neonText('  ──────────────────────────────', 'cyan'))
   console.log(`  Score: ${neonText(score + '/100', scoreColor as any)}`)
   
   if (confirmedTotal === 0) {
@@ -139,7 +139,7 @@ export function generateComprehensiveReport(
   // Detailed Findings - only show confirmed
   if (confirmedFindings.length > 0) {
     console.log(neonText('  📋 DETAILED FINDINGS', 'cyan'))
-    console.log(neonText('  ─'.repeat(30), 'cyan'))
+    console.log(neonText('  ──────────────────────────────', 'cyan'))
     
     for (const f of confirmedFindings.slice(0, 20)) {
       const sevIcon = f.severity === 'critical' ? '🔴' : f.severity === 'high' ? '🟠' : f.severity === 'medium' ? '🟡' : '⚪'
@@ -157,16 +157,16 @@ export function generateComprehensiveReport(
       }
     }
     
-    if (findings.length > 20) {
+    if (confirmedFindings.length > 20) {
       console.log('')
-      console.log(`  ... and ${findings.length - 20} more issues`)
+      console.log(`  ... and ${confirmedFindings.length - 20} more issues`)
     }
   }
 
   // AI Analysis Summary
   console.log('')
   console.log(neonText('  🤖 AI ANALYSIS LOG', 'cyan'))
-  console.log(neonText('  ─'.repeat(30), 'cyan'))
+  console.log(neonText('  ──────────────────────────────', 'cyan'))
   
   const agent = new AIAgentDisplay()
   agent.start('Final Analysis')
@@ -174,7 +174,7 @@ export function generateComprehensiveReport(
   agent.think('concluding', `Confirmed ${confirmedCount} real vulnerabilities`)
   agent.think('concluding', `Dismissed ${dismissedCount} false positives`)
   
-  if (findings.length === 0) {
+  if (confirmedFindings.length === 0) {
     agent.think('concluding', 'No security issues detected')
     agent.think('concluding', 'Codebase is secure')
   } else {
