@@ -95,41 +95,53 @@ export function generateComprehensiveReport(
   console.log(`  Total Time:          ${(scanTime + aiAnalysisTime).toFixed(1)}s`)
   console.log('')
 
-  // Security Score
-  const score = findings.length === 0 ? 100 : Math.max(0, 100 - (confirmedCount * 15))
+  // Security Score - based on AI CONFIRMED findings only
+  const criticalCount = findings.filter(f => f.severity === 'critical' && f.aiStatus === 'confirmed').length
+  const highCount = findings.filter(f => f.severity === 'high' && f.aiStatus === 'confirmed').length
+  const mediumCount = findings.filter(f => f.severity === 'medium' && f.aiStatus === 'confirmed').length
+  const lowCount = findings.filter(f => f.severity === 'low' && f.aiStatus === 'confirmed').length
+  
+  const confirmedTotal = criticalCount + highCount + mediumCount + lowCount
+  
+  let score = 100
+  if (confirmedTotal > 0) {
+    score = 100 - (criticalCount * 25) - (highCount * 15) - (mediumCount * 8) - (lowCount * 3)
+  }
+  score = Math.max(0, Math.min(100, score))
+  
   let scoreColor = 'green'
   if (score < 70) scoreColor = 'yellow'
   if (score < 50) scoreColor = 'red'
+  
+  const confirmedFindings = findings.filter(f => f.aiStatus === 'confirmed')
   
   console.log(neonText('  🎯 SECURITY SCORE', 'cyan'))
   console.log(neonText('  ─'.repeat(30), 'cyan'))
   console.log(`  Score: ${neonText(score + '/100', scoreColor as any)}`)
   
-  if (findings.length === 0) {
-    console.log(neonText('  ✓ No security vulnerabilities detected!', 'green'))
-    console.log(neonText('  ✓ Your codebase passes all security checks', 'green'))
+  if (confirmedTotal === 0) {
+    console.log(neonText('  ✓ No confirmed vulnerabilities!', 'green'))
+    if (dismissedCount > 0) {
+      console.log(neonText(`  ✓ Ruled out ${dismissedCount} false positives`, 'cyan'))
+    }
   } else {
     console.log('')
-    console.log(neonText('  🚨 VULNERABILITIES FOUND', 'red'))
+    console.log(neonText('  🚨 CONFIRMED VULNERABILITIES', 'red'))
     
-    const bySev: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
-    findings.forEach(f => bySev[f.severity] = (bySev[f.severity] || 0) + 1)
-    
-    console.log(`    Critical: ${neonText(bySev.critical.toString(), 'red')}`)
-    console.log(`    High:     ${neonText(bySev.high.toString(), 'yellow')}`)
-    console.log(`    Medium:   ${neonText(bySev.medium.toString(), 'magenta')}`)
-    console.log(`    Low:      ${bySev.low}`)
-    console.log(`    Info:     ${bySev.info}`)
+    console.log(`    Critical: ${neonText(criticalCount.toString(), 'red')}`)
+    console.log(`    High:     ${neonText(highCount.toString(), 'yellow')}`)
+    console.log(`    Medium:   ${neonText(mediumCount.toString(), 'magenta')}`)
+    console.log(`    Low:      ${lowCount}`)
   }
 
   console.log('')
   
-  // Detailed Findings
-  if (findings.length > 0) {
+  // Detailed Findings - only show confirmed
+  if (confirmedFindings.length > 0) {
     console.log(neonText('  📋 DETAILED FINDINGS', 'cyan'))
     console.log(neonText('  ─'.repeat(30), 'cyan'))
     
-    for (const f of findings.slice(0, 20)) {
+    for (const f of confirmedFindings.slice(0, 20)) {
       const sevIcon = f.severity === 'critical' ? '🔴' : f.severity === 'high' ? '🟠' : f.severity === 'medium' ? '🟡' : '⚪'
       console.log('')
       console.log(`  ${sevIcon} ${neonText(f.severity.toUpperCase(), f.severity === 'critical' ? 'red' : f.severity === 'high' ? 'yellow' : 'magenta')}: ${f.title}`)

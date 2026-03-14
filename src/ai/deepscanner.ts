@@ -6,7 +6,8 @@ export interface DeepScanProgress {
   totalFiles: number
 }
 
-const BATCH_SIZE = 10
+const BATCH_SIZE = 5
+const BATCH_DELAY_MS = 1500
 
 export async function deepScan(
   files: { path: string; content: string }[],
@@ -32,6 +33,9 @@ export async function deepScan(
     })
 
     const results = await Promise.all(promises)
+    
+    // Delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, BATCH_DELAY_MS))
     
     for (let j = 0; j < results.length; j++) {
       const issues = results[j]

@@ -6,14 +6,12 @@ export class XSSDetector extends BaseDetector {
   category = 'xss'
 
   private dangerousPatterns = [
-    { pattern: /dangerouslySetInnerHTML\s*=/gi, fix: 'Use DOMPurify.sanitize() before passing to __html' },
-    { pattern: /\.innerHTML\s*=/gi, fix: 'Use textContent or sanitize user input with DOMPurify' },
+    { pattern: /dangerouslySetInnerHTML\s*=\s*\{\s*\{/gi, fix: 'Use DOMPurify.sanitize() before passing to __html' },
+    { pattern: /\.innerHTML\s*=\s*(?!.*(?:animate|transition|style))/gi, fix: 'Use textContent or sanitize user input with DOMPurify' },
     { pattern: /document\.write\s*\(/gi, fix: 'Use safe DOM manipulation methods instead' },
-    { pattern: /eval\s*\(\s*.*(?:req|request|params|body|query|user|input)/gi, fix: 'Avoid eval with user input' },
-    { pattern: /\<\%\s*=\s*.*\%\>/gi, fix: 'Use auto-escaping or sanitize input' },
-    { pattern: /\{\{\s*.*\}\}/gi, fix: 'Ensure template variables are sanitized' },
-    { pattern: /v-html\s*=/gi, fix: 'Use v-text or sanitize content with DOMPurify' },
-    { pattern: /\[innerHTML\]\s*=/gi, fix: 'Use safe DOM methods or sanitize input' }
+    { pattern: /eval\s*\(\s*(?:req|request|params|body|query|user|input)/gi, fix: 'Avoid eval with user input' },
+    { pattern: /\<\%\s*=\s*(?!.*\b(?:for|if|loop)\b)/gi, fix: 'Use auto-escaping or sanitize input' },
+    { pattern: /v-html\s*=\s*\{/gi, fix: 'Use v-text or sanitize content with DOMPurify' },
   ]
 
   scan(file: FileInfo, content: string): Finding[] {

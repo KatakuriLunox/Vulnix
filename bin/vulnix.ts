@@ -62,7 +62,7 @@ async function getApiKey(options: any): Promise<string | undefined> {
   return undefined
 }
 
-program.name('vulnix').description('AI Security Agent').version('1.6.1')
+program.name('vulnix').description('AI Security Agent').version('1.7.0')
 
 program.command('scan')
   .description('Scan for vulnerabilities')

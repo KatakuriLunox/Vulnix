@@ -7,7 +7,9 @@ export interface VerificationProgress {
   total: number
 }
 
-const VERIFY_BATCH_SIZE = 10
+const VERIFY_BATCH_SIZE = 5
+
+const BATCH_DELAY_MS = 1500
 
 export async function verifyFindings(
   findings: Finding[],
@@ -40,6 +42,9 @@ export async function verifyFindings(
     })
 
     const results = await Promise.all(promises)
+
+    // Delay to avoid rate limiting
+    await new Promise(r => setTimeout(r, BATCH_DELAY_MS))
 
     for (let j = 0; j < results.length; j++) {
       const verification = results[j]
