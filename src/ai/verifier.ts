@@ -9,6 +9,8 @@ export interface VerificationProgress {
   currentFinding?: string
 }
 
+const VERIFY_BATCH_SIZE = 3
+
 export async function verifyFindings(
   findings: Finding[],
   fileContents: Map<string, string>,
@@ -22,61 +24,71 @@ export async function verifyFindings(
   const verified: Finding[] = []
   const total = findings.length
 
-  for (let i = 0; i < findings.length; i++) {
+  for (let i = 0; i < findings.length; i += VERIFY_BATCH_SIZE) {
     if (abortSignal?.aborted) break
     
-    const finding = findings[i]
-    const fileContent = fileContents.get(finding.file) || ''
-    
+    const batch = findings.slice(i, i + VERIFY_BATCH_SIZE)
+    const batchNum = Math.floor(i / VERIFY_BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(total / VERIFY_BATCH_SIZE)
+
+    if (onThinking) {
+      onThinking(`🔬 Verifying batch ${batchNum}/${totalBatches}: ${batch.length} findings in parallel...`)
+    }
+
     if (onProgress) {
       onProgress({
-        current: i + 1,
+        current: i,
         total,
-        currentFile: finding.file,
-        currentFinding: finding.title
+        currentFinding: `Batch ${batchNum}/${totalBatches}`
       })
     }
 
-    if (onThinking) {
-      onThinking(`🔍 Analyzing finding ${i + 1}/${total}: ${finding.title}`)
-      onThinking(`📄 File: ${finding.file}:${finding.line}`)
-      onThinking(`💭 Context: ${finding.message.substring(0, 100)}...`)
-    }
-
-    const options: StreamingOptions = {
-      onThinking,
-      signal: abortSignal
-    }
-
-    const verification = await verifySingleFinding(
-      finding,
-      fileContent,
-      apiKey,
-      buildVerifyPrompt,
-      options
-    )
-
-    if (verification.status === 'false-positive') {
-      if (onThinking) {
-        onThinking(`✅ Ruled out: ${finding.title} - FALSE POSITIVE`)
-        onThinking(`📝 Reason: ${verification.explanation.substring(0, 150)}`)
+    const promises = batch.map(async (finding) => {
+      const fileContent = fileContents.get(finding.file) || ''
+      
+      const options: StreamingOptions = {
+        onThinking: (thought) => {
+          if (onThinking && !abortSignal?.aborted) {
+            onThinking(`  📄 ${finding.file}:${finding.line} - ${thought}`)
+          }
+        },
+        signal: abortSignal
       }
-      continue
-    }
 
-    if (verification.status === 'confirmed') {
-      if (onThinking) {
-        onThinking(`🚨 CONFIRMED: ${finding.title}`)
-        onThinking(`💡 Fix: ${verification.fix?.substring(0, 100) || 'See details'}`)
-      }
-    }
+      const verification = await verifySingleFinding(
+        finding,
+        fileContent,
+        apiKey,
+        buildVerifyPrompt,
+        options
+      )
 
-    verified.push({
-      ...finding,
-      aiStatus: verification.status,
-      aiExplanation: verification.explanation,
-      aiFix: verification.fix || finding.aiFix
+      return { finding, verification }
     })
+
+    const results = await Promise.all(promises)
+
+    for (const { finding, verification } of results) {
+      if (verification.status === 'false-positive') {
+        if (onThinking) {
+          onThinking(`  ✅ Ruled out: ${finding.title} (false positive)`)
+        }
+        continue
+      }
+
+      if (verification.status === 'confirmed') {
+        if (onThinking) {
+          onThinking(`  🚨 CONFIRMED: ${finding.title}`)
+        }
+      }
+
+      verified.push({
+        ...finding,
+        aiStatus: verification.status,
+        aiExplanation: verification.explanation,
+        aiFix: verification.fix || finding.aiFix
+      })
+    }
   }
 
   return verified

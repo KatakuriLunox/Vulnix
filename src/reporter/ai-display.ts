@@ -46,7 +46,7 @@ export class AIProgressDisplay {
       startTime: Date.now()
     }
     this.render(true)
-    this.renderInterval = setInterval(() => this.render(true), 500)
+    this.renderInterval = setInterval(() => this.render(true), 600)
   }
 
   update(updates: Partial<AIProgressState>): void {
@@ -59,7 +59,11 @@ export class AIProgressDisplay {
   }
 
   addThought(thought: string): void {
-    this.state.thoughts = [...this.state.thoughts.slice(-4), thought]
+    if (thought.includes('Batch') || thought.includes('Verifying batch')) {
+      this.state.thoughts = [thought]
+    } else if (!thought.startsWith('  ')) {
+      this.state.thoughts = [thought]
+    }
     this.render(true)
   }
 
@@ -94,7 +98,7 @@ export class AIProgressDisplay {
 
   private render(force = false): void {
     const now = Date.now()
-    if (!force && now - this.lastRenderTime < 300) return
+    if (!force && now - this.lastRenderTime < 400) return
     this.lastRenderTime = now
 
     const s = this.state
@@ -119,11 +123,6 @@ export class AIProgressDisplay {
   private renderVerification(s: AIProgressState, elapsed: string): string {
     const percent = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0
     const bar = this.renderBar(percent)
-    
-    let thoughts = ''
-    if (s.thoughts.length > 0) {
-      thoughts = s.thoughts.slice(-2).map(t => `  ${t}`).join('\n')
-    }
 
     return `${neonText('══════════════════════════════════════════════════', 'cyan')}
 ${neonText('  🤖 AI SECURITY ANALYST ', 'magenta')}
@@ -133,10 +132,9 @@ ${neonText('  🔬 PHASE: VERIFICATION', 'yellow')}
   Analyzing static scan findings with DevStral AI...
 
 ${neonText(`  ${bar} ${percent}%`, 'cyan')}
-  Progress: ${s.current}/${s.total} findings analyzed
-  Time elapsed: ${elapsed}s
+  ${s.current}/${s.total} findings verified | ${elapsed}s elapsed
 
-${thoughts || '  💭 Waiting for analysis...'}
+${s.thoughts[0] ? neonText(`  ${s.thoughts[0]}`, 'magenta') : ''}
 
 ${neonText('──────────────────────────────────────────────────', 'cyan')}
   ✓ Confirmed: ${neonText(s.confirmed.toString(), 'green')}  |  
@@ -151,24 +149,18 @@ ${neonText('══════════════════════�
   private renderDeepScan(s: AIProgressState, elapsed: string): string {
     const percent = s.total > 0 ? Math.round((s.current / s.total) * 100) : 0
     const bar = this.renderBar(percent)
-    
-    let thoughts = ''
-    if (s.thoughts.length > 0) {
-      thoughts = s.thoughts.slice(-2).map(t => `  ${t}`).join('\n')
-    }
 
     return `${neonText('══════════════════════════════════════════════════', 'cyan')}
 ${neonText('  🧠 DEEP SECURITY SCAN ', 'magenta')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 
 ${neonText('  🔬 PHASE: DEEP ANALYSIS', 'yellow')}
-  Running comprehensive security analysis...
+  Scanning for advanced vulnerabilities...
 
 ${neonText(`  ${bar} ${percent}%`, 'cyan')}
-  Files: ${s.current}/${s.total} | Time: ${elapsed}s
+  ${s.current}/${s.total} files scanned | ${elapsed}s elapsed
 
-${s.currentFile ? `  📄 ${s.currentFile}` : ''}
-${thoughts || '  💭 Analyzing...'}
+${s.thoughts[0] ? neonText(`  ${s.thoughts[0]}`, 'magenta') : ''}
 
 ${neonText('──────────────────────────────────────────────────', 'cyan')}
   🚨 Issues: ${neonText(s.findingsFound.toString(), 'yellow')}  |  
