@@ -188,133 +188,69 @@ export async function deepScanWithProgress(
 }
 
 function getExpertSystemPrompt(): string {
-  return `You are VULNIX AI - an elite security researcher with 50+ years of experience. You've discovered 1000+ CVEs, published in Black Hat, DEF CON, and are an OWASP contributor.
-
-## YOUR IDENTITY & THOUGHT PROCESS
-
-When analyzing code, you think like this:
-1. "Let me understand what this code does first..."
-2. "Looking at the data flow, I see potential for..."
-3. "But wait - is this actually exploitable in practice?"
-4. "Let me check if there are any mitigating factors..."
-5. "Given the context, this is/isn't a real vulnerability because..."
-
-## CRITICAL RULES
-
-- ALWAYS consider FALSE POSITIVES first - most code patterns are NOT vulnerabilities
-- Check if inputs are sanitized, validated, or come from trusted sources
-- Consider if the vulnerability requires authentication, network access, or specific conditions
-- Test files, mocks, and node_modules are ALWAYS ignored
-- Only confirm if there's a REAL, EXPLOITABLE security issue
-
-## WHAT TO IGNORE
-
-- node_modules/, vendor/, dependencies (external code)
-- Test files (*.test.ts, *.spec.ts, __tests__, *.test.js)
-- Mock data, fixtures, stubs
-- Commented-out code
-- TODO/FIXME comments
-- Build outputs (dist/, build/, .next/)
-- Configuration files (config.json, .env.example)
-- Package lock files
-- Debug code that only runs in development
-
-## RESPONSE FORMAT (JSON only)
-
-{
-  "status": "confirmed" | "false-positive",
-  "explanation": "Your expert analysis with clear reasoning",
-  "fix": "Specific remediation",
-  "reason": "Why you reached this conclusion"
-}
-
-Think carefully. Be decisive. When in doubt, lean toward false-positive.`
+  return `You are a security vulnerability scanner. Always respond with valid JSON array format. No explanations, no markdown, just JSON.`
 }
 
 function getDeepScanExpertPrompt(fileContent: string, filePath: string): string {
-  return `Perform a DEEP SECURITY ANALYSIS of this file:
+  return `You are a security vulnerability scanner. Analyze the following code for security issues.
 
-## File: ${filePath}
+FILE: ${filePath}
 
-## Code:
-\`\`\`
+CODE:
 ${fileContent}
-\`\`\`
 
-## Instructions:
+Find these types of vulnerabilities:
+- SQL Injection (string concatenation in queries)
+- XSS (innerHTML, dangerouslySetInnerHTML)  
+- Command Injection (exec, spawn, eval)
+- Path Traversal
+- Hardcoded Secrets
+- Insecure Random
+- XXE
+- Deserialization
 
-1. First, analyze the FILE PURPOSE and CONTEXT:
-   - What does this file do?
-   - What are the entry points?
-   - What data does it process?
-   - What are the trust boundaries?
+IMPORTANT: Look carefully at every line of code for these patterns.
 
-2. Then check for these ADVANCED VULNERABILITIES that regex can't detect:
+For each vulnerability found, respond with EXACTLY this JSON format (nothing else):
+[{"line": LINE_NUMBER, "title": "Issue title", "category": "category", "severity": "critical|high|medium|low", "explanation": "Why this is vulnerable", "fix": "How to fix"}]
 
-   a) **Business Logic Flaws**
-      - Authentication bypass via race conditions
-      - Authorization flaws in workflow
-      - Price/total calculation manipulation
-      - Session fixation
-      
-   b) **Data Flow Issues**
-      - Sensitive data in logs
-      - Unencrypted data transmission
-      - Improper input validation chains
-      - Path traversal through user input
-      
-   c) **API Security**
-      - Missing rate limiting
-      - IDOR vulnerabilities
-      - SSRF via URL parameters
-      - GraphQL issues
-      
-   d) **Crypto & Secrets**
-      - Weak random number generation
-      - Hardcoded seeds
-      - Insufficient key sizes
-      - ECB mode usage
-      
-   e) **Modern Framework Issues**
-      - React: dangerouslySetInnerHTML without sanitization
-      - Express: missing security headers
-      - Next.js: server actions without validation
-      - Django: raw SQL in ORM
-
-3. For each issue found, provide:
-   - Exact line number
-   - CWE ID
-   - CVSS score estimate (0-10)
-   - Proof of concept if possible
-   - Concrete fix
-
-4. IGNORE:
-   - node_modules imports (external code)
-   - Test files
-   - Configuration files
-   - Commented code
-
-Respond in JSON array format:
-[
-  {
-    "line": 42,
-    "title": "SQL Injection in user query",
-    "category": "injection",
-    "severity": "critical",
-    "cwe": "CWE-89",
-    "cvss": 9.8,
-    "explanation": "Detailed explanation...",
-    "fix": "Code fix..."
-  }
-]
-
-If no issues, return: []`
+If no vulnerabilities found, respond with exactly: []`
 }
 
 function parseDeepScanResponse(content: string, filePath: string): Finding[] {
   try {
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) return []
+    let jsonMatch = content.match(/\[[\s\S]*\]/)
+    
+    if (!jsonMatch) {
+      jsonMatch = content.match(/```json\n\[[\s\S]*\]\n```/)
+    }
+    
+    if (!jsonMatch) {
+      const lines = content.split('\n')
+      for (const line of lines) {
+        if (line.toLowerCase().includes('sql injection') || 
+            line.toLowerCase().includes('xss') ||
+            line.toLowerCase().includes('command injection') ||
+            line.toLowerCase().includes('path traversal') ||
+            line.toLowerCase().includes('hardcoded secret')) {
+          return [{
+            id: `${filePath}:1:deepscan`,
+            title: "Security vulnerability detected",
+            severity: 'high' as const,
+            file: filePath,
+            line: 1,
+            code: content.slice(0, 100),
+            message: content.slice(0, 500),
+            fix: "Review and fix the security issue",
+            category: 'deepscan',
+            aiStatus: 'confirmed' as const,
+            aiExplanation: content.slice(0, 500),
+            aiFix: "Review and fix"
+          }]
+        }
+      }
+      return []
+    }
 
     const issues = JSON.parse(jsonMatch[0]) as any[]
     
@@ -332,7 +268,7 @@ function parseDeepScanResponse(content: string, filePath: string): Finding[] {
       aiExplanation: issue.explanation,
       aiFix: issue.fix
     }))
-  } catch {
+  } catch (e) {
     return []
   }
 }
