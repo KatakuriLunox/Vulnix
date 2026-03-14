@@ -21,7 +21,7 @@ import { verifyFindings } from '../src/ai/verifier'
 import { deepScan } from '../src/ai/deepscanner'
 import { configManager } from '../src/config'
 import { Spinner, neonText } from '../src/reporter/spinner'
-import { AIAgentDisplay, generateComprehensiveReport } from '../src/reporter/agent'
+import { AIAgentDisplay, generateComprehensiveReport, generateChatReport } from '../src/reporter/agent'
 
 const program = new Command()
 let abortController: AbortController | null = null
@@ -88,13 +88,12 @@ program.command('scan')
     }
 
     console.log('')
-    console.log(neonText('═'.repeat(50), 'cyan'))
-    console.log(neonText('    🤖 VULNIX AI SECURITY AGENT v1.6.1', 'magenta'))
-    console.log(neonText('═'.repeat(50), 'cyan'))
+    console.log(neonText('🤖 Vulnix Security Scanner', 'cyan'))
+    console.log(neonText('─'.repeat(40), 'cyan'))
 
     const agent = new AIAgentDisplay()
     agent.start('Initializing')
-    agent.think('searching', `Initializing scan on ${scanPath}...`)
+    agent.think('searching', `Scanning: ${scanPath}`)
 
     try {
       abortController = new AbortController()
@@ -103,7 +102,7 @@ program.command('scan')
       let result: ScanResult
 
       if (options.full && apiKey) {
-        agent.think('searching', 'Pure AI deep scan mode - scanning all files...')
+        agent.think('searching', 'AI deep scan mode')
         
         const walker = new Walker(ignore)
         const files = await walker.walk(scanPath, parseInt(options.maxFiles) || 1000)
@@ -115,18 +114,13 @@ program.command('scan')
           } catch {}
         }
 
-        const spinner = new Spinner('AI analyzing codebase...')
-        spinner.start()
-
         const filesArray = Array.from(fileContents.entries()).map(([p, c]) => ({ path: p, content: c }))
-        agent.think('searching', `Deep scanning ${filesArray.length} files with AI...`)
+        agent.think('searching', `Found ${filesArray.length} files`)
 
         const aiFindings = await deepScan(filesArray, apiKey,
           (thought) => agent.think('analyzing', thought),
           abortController!.signal
         )
-        
-        spinner.stop(`AI found ${aiFindings.length} issues`)
 
         result = {
           findings: aiFindings,
@@ -140,13 +134,11 @@ program.command('scan')
         }
 
         const totalTime = (Date.now() - totalStart) / 1000
-        generateComprehensiveReport(
+        generateChatReport(
           result.findings,
           result.confirmedCount,
-          result.dismissedCount,
           result.filesScanned,
-          result.scanTime,
-          totalTime - result.scanTime
+          result.scanTime
         )
       } else {
         const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })

@@ -24,26 +24,13 @@ export async function deepScan(
 
     if (onProgress) {
       const batchNames = batch.map(f => f.path.split('/').pop()).join(', ')
-      onProgress(`🧠 Deep scanning batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batchNames}`)
+      onProgress(`Scanning batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batchNames}`)
     }
 
     const promises = batch.map(async (file) => {
-      let streamPreview = ''
       const options: StreamingOptions = { 
         signal: abortSignal,
-        onThinking: (thought) => onProgress?.(thought),
-        onChunk: (chunk) => {
-          streamPreview += chunk
-          if (streamPreview.length > 50) {
-            onProgress?.(`🧠 ${file.path}: ${streamPreview.slice(0, 50)}...`)
-            streamPreview = ''
-          }
-        },
-        onDone: () => {
-          if (streamPreview) {
-            onProgress?.(`🧠 ${file.path}: ${streamPreview.slice(0, 50)}...`)
-          }
-        }
+        onThinking: (thought) => onProgress?.(thought)
       }
       return deepScanWithProgress(file, apiKey, options)
     })

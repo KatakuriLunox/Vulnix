@@ -152,7 +152,7 @@ export async function verifySingleFinding(
   const prompt = promptFn({ ...finding, context }, context)
   
   if (options.onThinking) {
-    options.onThinking(`Analyzing ${finding.file}:${finding.line} - ${finding.title}`)
+    options.onThinking(`Verifying: ${finding.file.split('/').pop()}:${finding.line}`)
   }
   
   const response = await callMistral(apiKey, [
@@ -176,8 +176,7 @@ export async function deepScanWithProgress(
   const prompt = getDeepScanExpertPrompt(file.content, file.path)
   
   if (options.onThinking) {
-    options.onThinking(`Initiating deep security analysis on ${file.path}`)
-    options.onThinking(`Reviewing code structure and identifying attack surfaces`)
+    options.onThinking(`Analyzing ${file.path.split('/').pop()}`)
   }
 
   const response = await callMistral(apiKey, [
