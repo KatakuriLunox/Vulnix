@@ -1,6 +1,6 @@
 {
   "name": "vulnix",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "CLI security scanner for AI-generated and vibe-coded projects",
   "main": "dist/index.js",
   "bin": {
