@@ -26,7 +26,7 @@ export async function callMistral(
         messages,
         temperature: 0.1,
         max_tokens: 3000,
-        stream: false
+        stream: true
       })
     })
 
@@ -34,14 +34,58 @@ export async function callMistral(
       throw new Error(`API error: ${response.status}`)
     }
 
-    const data = await response.json() as any
-    const content = data.choices[0]?.message?.content || ''
-
-    if (options.onDone) {
-      options.onDone(content)
+    const reader = response.body?.getReader()
+    if (!reader) {
+      throw new Error('No response body')
     }
 
-    return parseAIResponse(content)
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+    let hasShownFirstChunk = false
+
+    while (true) {
+      if (options.signal?.aborted) {
+        reader.cancel()
+        return { status: 'interrupted', explanation: 'Analysis interrupted' }
+      }
+
+      const { done, value } = await reader.read()
+      if (done) break
+
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          if (data === '[DONE]') continue
+
+          try {
+            const parsed = JSON.parse(data)
+            const content = parsed.choices?.[0]?.delta?.content || ''
+            if (content) {
+              fullContent += content
+              
+              if (!hasShownFirstChunk && options.onThinking) {
+                hasShownFirstChunk = true
+              }
+              
+              if (options.onChunk) {
+                options.onChunk(content)
+              }
+            }
+          } catch {}
+        }
+      }
+    }
+
+    if (options.onDone) {
+      options.onDone(fullContent)
+    }
+
+    return parseAIResponse(fullContent)
   } catch (error) {
     if ((error as Error).name === 'AbortError') {
       return {

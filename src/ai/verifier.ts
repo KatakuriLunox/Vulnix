@@ -34,8 +34,22 @@ export async function verifyFindings(
     const promises = batch.map(async (finding) => {
       const fileContent = fileContents.get(finding.file) || ''
       
+      let streamPreview = ''
       const options: StreamingOptions = {
-        signal: abortSignal
+        signal: abortSignal,
+        onThinking: (thought) => onProgress?.(thought),
+        onChunk: (chunk) => {
+          streamPreview += chunk
+          if (streamPreview.length > 50) {
+            onProgress?.(`🤖 AI reasoning: ${streamPreview.slice(0, 50)}...`)
+            streamPreview = ''
+          }
+        },
+        onDone: () => {
+          if (streamPreview) {
+            onProgress?.(`🤖 AI reasoning: ${streamPreview.slice(0, 50)}...`)
+          }
+        }
       }
 
       return verifySingleFinding(finding, fileContent, apiKey, buildVerifyPrompt, options)
