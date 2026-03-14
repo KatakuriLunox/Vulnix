@@ -65,7 +65,8 @@ async function getApiKey(options: any): Promise<string | undefined> {
 program.name('vulnix').description('AI Security Agent').version('1.6.1')
 
 program.command('scan')
-  .argument('<path>', 'Path to scan')
+  .description('Scan for vulnerabilities')
+  .argument('[path]', 'Path to scan (default: current directory)', process.cwd())
   .option('--ai', 'AI verification')
   .option('--full', 'Deep scan')
   .option('-o, --output <fmt>', 'terminal/json/html', 'terminal')
