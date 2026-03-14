@@ -1,8 +1,5 @@
 import { neonText } from './spinner'
 
-const RESET = '\x1b[0m'
-const BOLD = '\x1b[1m'
-
 export interface AIProgressState {
   phase: 'init' | 'verifying' | 'deepscan' | 'complete'
   current: number
@@ -21,6 +18,7 @@ export class AIProgressDisplay {
   private state: AIProgressState
   private renderInterval: NodeJS.Timeout | null = null
   private lastRender = ''
+  private lastRenderTime = 0
 
   constructor() {
     this.state = this.getInitialState()
@@ -47,28 +45,37 @@ export class AIProgressDisplay {
       total,
       startTime: Date.now()
     }
-    this.render()
-    this.renderInterval = setInterval(() => this.render(), 100)
+    this.render(true)
+    this.renderInterval = setInterval(() => this.render(true), 500)
   }
 
   update(updates: Partial<AIProgressState>): void {
+    const oldCurrent = this.state.current
     this.state = { ...this.state, ...updates }
+    
+    if (updates.current !== undefined && updates.current !== oldCurrent) {
+      this.render(true)
+    }
   }
 
   addThought(thought: string): void {
-    this.state.thoughts = [...this.state.thoughts.slice(-8), thought]
+    this.state.thoughts = [...this.state.thoughts.slice(-4), thought]
+    this.render(true)
   }
 
   incrementFound(): void {
     this.state.findingsFound++
+    this.render(true)
   }
 
   incrementConfirmed(): void {
     this.state.confirmed++
+    this.render(true)
   }
 
   incrementDismissed(): void {
     this.state.dismissed++
+    this.render(true)
   }
 
   abort(): void {
@@ -85,7 +92,11 @@ export class AIProgressDisplay {
     this.render(true)
   }
 
-  private render(final = false): void {
+  private render(force = false): void {
+    const now = Date.now()
+    if (!force && now - this.lastRenderTime < 300) return
+    this.lastRenderTime = now
+
     const s = this.state
     const elapsed = ((Date.now() - s.startTime) / 1000).toFixed(1)
     
@@ -99,9 +110,8 @@ export class AIProgressDisplay {
       output = this.renderComplete(s, elapsed)
     }
 
-    if (output !== this.lastRender || final) {
-      this.clear()
-      process.stdout.write(output)
+    if (output !== this.lastRender || force) {
+      process.stdout.write('\r\x1b[2J\x1b[H' + output)
       this.lastRender = output
     }
   }
@@ -112,12 +122,10 @@ export class AIProgressDisplay {
     
     let thoughts = ''
     if (s.thoughts.length > 0) {
-      const latest = s.thoughts.slice(-3)
-      thoughts = latest.map(t => `  ${t}`).join('\n')
+      thoughts = s.thoughts.slice(-2).map(t => `  ${t}`).join('\n')
     }
 
-    return `
-${neonText('══════════════════════════════════════════════════', 'cyan')}
+    return `${neonText('══════════════════════════════════════════════════', 'cyan')}
 ${neonText('  🤖 AI SECURITY ANALYST ', 'magenta')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 
@@ -128,7 +136,7 @@ ${neonText(`  ${bar} ${percent}%`, 'cyan')}
   Progress: ${s.current}/${s.total} findings analyzed
   Time elapsed: ${elapsed}s
 
-${thoughts ? thoughts : '  💭 Thinking...'}
+${thoughts || '  💭 Waiting for analysis...'}
 
 ${neonText('──────────────────────────────────────────────────', 'cyan')}
   ✓ Confirmed: ${neonText(s.confirmed.toString(), 'green')}  |  
@@ -146,29 +154,24 @@ ${neonText('══════════════════════�
     
     let thoughts = ''
     if (s.thoughts.length > 0) {
-      const latest = s.thoughts.slice(-3)
-      thoughts = latest.map(t => `  ${t}`).join('\n')
+      thoughts = s.thoughts.slice(-2).map(t => `  ${t}`).join('\n')
     }
 
-    return `
-${neonText('══════════════════════════════════════════════════', 'cyan')}
+    return `${neonText('══════════════════════════════════════════════════', 'cyan')}
 ${neonText('  🧠 DEEP SECURITY SCAN ', 'magenta')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 
 ${neonText('  🔬 PHASE: DEEP ANALYSIS', 'yellow')}
   Running comprehensive security analysis...
-  (This may take a while for large codebases)
 
 ${neonText(`  ${bar} ${percent}%`, 'cyan')}
-  Files analyzed: ${s.current}/${s.total}
-  Time elapsed: ${elapsed}s
+  Files: ${s.current}/${s.total} | Time: ${elapsed}s
 
-${s.currentFile ? `  📄 Current: ${s.currentFile}` : ''}
-
-${thoughts ? thoughts : '  💭 Analyzing attack surfaces...'}
+${s.currentFile ? `  📄 ${s.currentFile}` : ''}
+${thoughts || '  💭 Analyzing...'}
 
 ${neonText('──────────────────────────────────────────────────', 'cyan')}
-  🚨 Issues found: ${neonText(s.findingsFound.toString(), 'yellow')}
+  🚨 Issues: ${neonText(s.findingsFound.toString(), 'yellow')}  |  
   ✓ Confirmed: ${neonText(s.confirmed.toString(), 'green')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 
@@ -181,8 +184,7 @@ ${neonText('══════════════════════�
       ? neonText('  ⚠️ SCAN ABORTED BY USER', 'yellow')
       : neonText('  ✓ AI ANALYSIS COMPLETE', 'green')
 
-    return `
-${neonText('══════════════════════════════════════════════════', 'cyan')}
+    return `${neonText('══════════════════════════════════════════════════', 'cyan')}
 ${neonText('  ✅ ANALYSIS COMPLETE ', 'magenta')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 
@@ -191,24 +193,17 @@ ${status}
 
 ${neonText('──────────────────────────────────────────────────', 'cyan')}
   ${neonText('📊 FINAL RESULTS:', 'cyan')}
-  ✓ Confirmed real vulnerabilities: ${neonText(s.confirmed.toString(), 'green')}
-  ✗ False positives dismissed: ${neonText(s.dismissed.toString(), 'red')}
-  🚨 Total issues found: ${neonText(s.findingsFound.toString(), 'yellow')}
+  ✓ Confirmed: ${neonText(s.confirmed.toString(), 'green')}
+  ✗ Dismissed: ${neonText(s.dismissed.toString(), 'red')}
+  🚨 Total: ${neonText(s.findingsFound.toString(), 'yellow')}
 ${neonText('══════════════════════════════════════════════════', 'cyan')}
 `
   }
 
-  private renderBar(percent: number, width: number = 25): string {
+  private renderBar(percent: number, width: number = 20): string {
     const filled = Math.floor((percent / 100) * width)
     const empty = width - filled
-    const filledStr = '█'.repeat(Math.max(0, Math.min(filled, width)))
-    const emptyStr = '░'.repeat(Math.max(0, empty))
-    return `\x1b[36m${filledStr}\x1b[90m${emptyStr}\x1b[0m`
-  }
-
-  private clear(): void {
-    const lines = this.lastRender.split('\n').length
-    process.stdout.write(`\x1b[${lines}A\x1b[J`)
+    return `\x1b[36m${'█'.repeat(filled)}\x1b[90m${'░'.repeat(empty)}\x1b[0m`
   }
 
   getState(): AIProgressState {
