@@ -4,6 +4,7 @@ import { Command } from 'commander'
 import * as fs from 'fs'
 import * as readline from 'readline'
 import { Scanner } from '../src/core/scanner'
+import { Walker } from '../src/core/walker'
 import { ScanResult, Severity } from '../src/types'
 import { SecretsDetector } from '../src/detectors/secrets'
 import { InjectionDetector } from '../src/detectors/injection'
@@ -96,66 +97,117 @@ program.command('scan')
     agent.think('searching', `Initializing scan on ${scanPath}...`)
 
     try {
-      const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })
-    
-    scanner.registerDetector(new SecretsDetector())
-    scanner.registerDetector(new InjectionDetector())
-    scanner.registerDetector(new XSSDetector())
-    scanner.registerDetector(new AuthDetector())
-    scanner.registerDetector(new CryptoDetector())
-    scanner.registerDetector(new FilesystemDetector())
-    scanner.registerDetector(new NetworkDetector())
-    scanner.registerDetector(new PerformanceDetector())
-    scanner.registerDetector(new ErrorHandlingDetector())
-    scanner.registerDetector(new AIDetector())
-    scanner.registerDetector(new BackdoorDetector())
+      abortController = new AbortController()
+      const fileContents = new Map<string, string>()
+      const totalStart = Date.now()
+      let result: ScanResult
 
-    const spinner = new Spinner('Analyzing codebase...')
-    spinner.start()
-
-    const fileContents = new Map<string, string>()
-    const totalStart = Date.now()
-    let result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey }, fileContents)
-    const scanTime = (Date.now() - totalStart) / 1000
-
-    spinner.stop(`Found ${result.findings.length} issues`)
-    agent.think('found', `Static analysis: ${result.findings.length} potential issues found in ${result.filesScanned} files`)
-
-    if (options.ai && apiKey) {
-      agent.think('analyzing', 'Starting AI verification...')
-      const aiStart = Date.now()
-      
-      result = await runAI(result, fileContents, apiKey, options, agent)
-      
-      const aiTime = (Date.now() - aiStart) / 1000
-      agent.think('concluding', `AI analysis complete in ${aiTime.toFixed(1)}s`)
-
-      const totalTime = (Date.now() - totalStart) / 1000
-
-      if (options.output === 'json' || options.output === 'html') {
-        if (options.output === 'json') {
-          console.log(JSON.stringify(result, null, 2))
+      if (options.full && apiKey) {
+        agent.think('searching', 'Pure AI deep scan mode - scanning all files...')
+        
+        const walker = new Walker(ignore)
+        const files = await walker.walk(scanPath, parseInt(options.maxFiles) || 1000)
+        
+        for (const file of files) {
+          try {
+            const content = fs.readFileSync(file.path, 'utf-8')
+            fileContents.set(file.relativePath, content)
+          } catch {}
         }
-      } else {
+
+        const spinner = new Spinner('AI analyzing codebase...')
+        spinner.start()
+
+        const filesArray = Array.from(fileContents.entries()).map(([p, c]) => ({ path: p, content: c }))
+        agent.think('searching', `Deep scanning ${filesArray.length} files with AI...`)
+
+        const aiFindings = await deepScan(filesArray, apiKey,
+          (thought) => agent.think('analyzing', thought),
+          abortController!.signal
+        )
+        
+        spinner.stop(`AI found ${aiFindings.length} issues`)
+
+        result = {
+          findings: aiFindings,
+          filesScanned: files.length,
+          scanTime: (Date.now() - totalStart) / 1000,
+          aiVerified: true,
+          staticCount: 0,
+          confirmedCount: aiFindings.length,
+          dismissedCount: 0,
+          newFromAI: aiFindings.length
+        }
+
+        const totalTime = (Date.now() - totalStart) / 1000
         generateComprehensiveReport(
           result.findings,
           result.confirmedCount,
           result.dismissedCount,
           result.filesScanned,
-          scanTime,
-          totalTime - scanTime
+          result.scanTime,
+          totalTime - result.scanTime
         )
-      }
-    } else {
-      const totalTime = (Date.now() - totalStart) / 1000
-      if (options.output === 'json') {
-        console.log(JSON.stringify(result, null, 2))
-      } else if (options.output === 'html') {
-        console.log('HTML output not implemented in agent mode')
       } else {
-        generateComprehensiveReport(result.findings, 0, 0, result.filesScanned, scanTime, 0)
+        const scanner = new Scanner({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey })
+      
+        scanner.registerDetector(new SecretsDetector())
+        scanner.registerDetector(new InjectionDetector())
+        scanner.registerDetector(new XSSDetector())
+        scanner.registerDetector(new AuthDetector())
+        scanner.registerDetector(new CryptoDetector())
+        scanner.registerDetector(new FilesystemDetector())
+        scanner.registerDetector(new NetworkDetector())
+        scanner.registerDetector(new PerformanceDetector())
+        scanner.registerDetector(new ErrorHandlingDetector())
+        scanner.registerDetector(new AIDetector())
+        scanner.registerDetector(new BackdoorDetector())
+
+        const spinner = new Spinner('Analyzing codebase...')
+        spinner.start()
+
+        result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey }, fileContents)
+        const scanTime = (Date.now() - totalStart) / 1000
+
+        spinner.stop(`Found ${result.findings.length} issues`)
+        agent.think('found', `Static analysis: ${result.findings.length} potential issues found in ${result.filesScanned} files`)
+
+        if (options.ai && apiKey) {
+          agent.think('analyzing', 'Starting AI verification...')
+          const aiStart = Date.now()
+          
+          result = await runAI(result, fileContents, apiKey, options, agent)
+          
+          const aiTime = (Date.now() - aiStart) / 1000
+          agent.think('concluding', `AI analysis complete in ${aiTime.toFixed(1)}s`)
+
+          const totalTime = (Date.now() - totalStart) / 1000
+
+          if (options.output === 'json' || options.output === 'html') {
+            if (options.output === 'json') {
+              console.log(JSON.stringify(result, null, 2))
+            }
+          } else {
+            generateComprehensiveReport(
+              result.findings,
+              result.confirmedCount,
+              result.dismissedCount,
+              result.filesScanned,
+              scanTime,
+              totalTime - scanTime
+            )
+          }
+        } else {
+          const totalTime = (Date.now() - totalStart) / 1000
+          if (options.output === 'json') {
+            console.log(JSON.stringify(result, null, 2))
+          } else if (options.output === 'html') {
+            console.log('HTML output not implemented in agent mode')
+          } else {
+            generateComprehensiveReport(result.findings, 0, 0, result.filesScanned, scanTime, 0)
+          }
+        }
       }
-    }
 
     process.exit(result.findings.some(f => f.severity === 'critical' || f.severity === 'high') ? 1 : 0)
     } catch (error) {
