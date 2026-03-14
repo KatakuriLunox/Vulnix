@@ -92,6 +92,7 @@ export function generateComprehensiveReport(
   console.log(`  False Positives:    ${dismissedCount}`)
   console.log(`  Scan Time:           ${scanTime.toFixed(1)}s`)
   console.log(`  AI Analysis:         ${aiAnalysisTime.toFixed(1)}s`)
+  console.log(`  Total Time:          ${(scanTime + aiAnalysisTime).toFixed(1)}s`)
   console.log('')
 
   // Security Score

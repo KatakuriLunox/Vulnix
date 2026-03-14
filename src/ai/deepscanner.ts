@@ -6,12 +6,12 @@ export interface DeepScanProgress {
   totalFiles: number
 }
 
-const BATCH_SIZE = 5
+const BATCH_SIZE = 10
 
 export async function deepScan(
   files: { path: string; content: string }[],
   apiKey: string,
-  onProgress?: (progress: DeepScanProgress) => void,
+  onProgress?: (thought: string) => void,
   abortSignal?: AbortSignal
 ): Promise<Finding[]> {
   const allFindings: Finding[] = []
@@ -22,7 +22,8 @@ export async function deepScan(
     const batch = files.slice(i, i + BATCH_SIZE)
 
     if (onProgress) {
-      onProgress({ currentFile: Math.min(i + BATCH_SIZE, files.length), totalFiles: files.length })
+      const batchNames = batch.map(f => f.path.split('/').pop()).join(', ')
+      onProgress(`🧠 Deep scanning batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batchNames}`)
     }
 
     const promises = batch.map(async (file) => {
@@ -32,8 +33,14 @@ export async function deepScan(
 
     const results = await Promise.all(promises)
     
-    for (const issues of results) {
-      allFindings.push(...issues)
+    for (let j = 0; j < results.length; j++) {
+      const issues = results[j]
+      if (issues.length > 0) {
+        if (onProgress) {
+          onProgress(`🚨 Found ${issues.length} issues in ${batch[j].path}`)
+        }
+        allFindings.push(...issues)
+      }
     }
   }
 

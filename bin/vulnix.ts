@@ -62,7 +62,7 @@ async function getApiKey(options: any): Promise<string | undefined> {
   return undefined
 }
 
-program.name('vulnix').description('AI Security Agent').version('1.6.0')
+program.name('vulnix').description('AI Security Agent').version('1.6.1')
 
 program.command('scan')
   .argument('<path>', 'Path to scan')
@@ -112,12 +112,12 @@ program.command('scan')
     spinner.start()
 
     const fileContents = new Map<string, string>()
-    const scanStart = Date.now()
+    const totalStart = Date.now()
     let result = await scanner.scan({ path: scanPath, ai: options.ai, full: options.full, output: options.output, severity, ignore, maxFiles: parseInt(options.maxFiles) || 1000, apiKey }, fileContents)
-    const scanTime = (Date.now() - scanStart) / 1000
+    const scanTime = (Date.now() - totalStart) / 1000
 
     spinner.stop(`Found ${result.findings.length} issues`)
-    agent.think('found', `Static analysis: ${result.findings.length} potential issues in ${result.filesScanned} files`)
+    agent.think('found', `Static analysis: ${result.findings.length} potential issues found in ${result.filesScanned} files`)
 
     if (options.ai && apiKey) {
       agent.think('analyzing', 'Starting AI verification...')
@@ -127,6 +127,8 @@ program.command('scan')
       
       const aiTime = (Date.now() - aiStart) / 1000
       agent.think('concluding', `AI analysis complete in ${aiTime.toFixed(1)}s`)
+
+      const totalTime = (Date.now() - totalStart) / 1000
 
       if (options.output === 'json' || options.output === 'html') {
         if (options.output === 'json') {
@@ -139,10 +141,11 @@ program.command('scan')
           result.dismissedCount,
           result.filesScanned,
           scanTime,
-          aiTime
+          totalTime - scanTime
         )
       }
     } else {
+      const totalTime = (Date.now() - totalStart) / 1000
       if (options.output === 'json') {
         console.log(JSON.stringify(result, null, 2))
       } else if (options.output === 'html') {
@@ -164,7 +167,7 @@ async function runAI(result: ScanResult, fileContents: Map<string, string>, apiK
 
     const initialCount = result.findings.length
     result.findings = await verifyFindings(result.findings, fileContents, apiKey, 
-      (p) => agent.think('analyzing', `Analyzing finding ${p.current}/${p.total}...`),
+      (thought) => agent.think('analyzing', thought),
       abortController.signal
     )
 
@@ -184,7 +187,7 @@ async function runAI(result: ScanResult, fileContents: Map<string, string>, apiK
     agent.think('searching', `Deep scanning ${files.length} files for advanced vulnerabilities...`)
 
     const aiFindings = await deepScan(files, apiKey, 
-      (p) => agent.think('analyzing', `Deep scanning ${p.currentFile}/${p.totalFiles}...`),
+      (thought) => agent.think('searching', thought),
       abortController.signal
     )
     

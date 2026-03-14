@@ -7,13 +7,13 @@ export interface VerificationProgress {
   total: number
 }
 
-const VERIFY_BATCH_SIZE = 3
+const VERIFY_BATCH_SIZE = 10
 
 export async function verifyFindings(
   findings: Finding[],
   fileContents: Map<string, string>,
   apiKey: string,
-  onProgress?: (progress: VerificationProgress) => void,
+  onProgress?: (thought: string) => void,
   abortSignal?: AbortSignal
 ): Promise<Finding[]> {
   if (findings.length === 0) return findings
@@ -26,7 +26,7 @@ export async function verifyFindings(
     const batch = findings.slice(i, i + VERIFY_BATCH_SIZE)
 
     if (onProgress) {
-      onProgress({ current: i + batch.length, total: findings.length })
+      onProgress(`🤖 Analyzing ${batch.length} findings in parallel...`)
     }
 
     const promises = batch.map(async (finding) => {
@@ -46,7 +46,14 @@ export async function verifyFindings(
       const finding = batch[j]
 
       if (verification.status === 'false-positive') {
+        if (onProgress) {
+          onProgress(`✅ Dismissed: ${finding.title} (false positive)`)
+        }
         continue
+      }
+
+      if (onProgress) {
+        onProgress(`🚨 Confirmed: ${finding.title}`)
       }
 
       verified.push({
