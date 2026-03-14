@@ -21,8 +21,51 @@ import { deepScan } from '../src/ai/deepscanner'
 import { reportTerminal } from '../src/reporter/terminal'
 import { reportJSON } from '../src/reporter/json'
 import { reportHTML } from '../src/reporter/html'
+import { configManager } from '../src/config'
 
 const program = new Command()
+
+async function getApiKey(options: any): Promise<string | undefined> {
+  if (options.apiKey) {
+    return options.apiKey
+  }
+  
+  const envKey = process.env.MISTRAL_API_KEY
+  if (envKey) {
+    return envKey
+  }
+  
+  const savedKey = configManager.getApiKey()
+  if (savedKey) {
+    return savedKey
+  }
+  
+  if (options.ai || options.full) {
+    console.log('\n🔐 First time using AI features!')
+    console.log('Please enter your Mistral API key.')
+    console.log('Get one free at: https://console.mistral.ai/')
+    console.log('(This will be saved for future use)\n')
+    
+    const readline = require('readline').createInterface({
+      input: process.stdin,
+      output: process.stdout
+    })
+    
+    return new Promise((resolve) => {
+      readline.question('Enter your Mistral API key: ', (answer: string) => {
+        readline.close()
+        const key = answer.trim()
+        if (key) {
+          configManager.setApiKey(key)
+          console.log('✅ API key saved!\n')
+        }
+        resolve(key || undefined)
+      })
+    })
+  }
+  
+  return undefined
+}
 
 program
   .name('vulnix')
@@ -39,16 +82,17 @@ program
   .option('-s, --severity <level>', 'Minimum severity: critical, high, medium, low, info', 'info')
   .option('-i, --ignore <paths>', 'Comma-separated paths to ignore')
   .option('--max-files <number>', 'Maximum files to scan', '1000')
-  .option('--api-key <key>', 'Mistral API key for AI verification')
+  .option('--api-key <key>', 'Mistral API key for AI verification (or set MISTRAL_API_KEY env)')
   .action(async (scanPath: string, options: any) => {
     const severity = options.severity as Severity
     const ignore = options.ignore ? options.ignore.split(',') : []
     const maxFiles = parseInt(options.maxFiles) || 1000
     
-    const apiKey = options.apiKey || process.env.MISTRAL_API_KEY
+    const apiKey = await getApiKey(options)
     
     if ((options.ai || options.full) && !apiKey) {
-      console.error('Error: --api-key required or set MISTRAL_API_KEY environment variable')
+      console.error('Error: API key required for AI features')
+      console.error('Set MISTRAL_API_KEY env variable or use --api-key flag')
       process.exit(1)
     }
 
@@ -127,6 +171,34 @@ program
     
     fs.writeFileSync('.vulnixrc', JSON.stringify(config, null, 2))
     console.log('Created .vulnixrc configuration file')
+  })
+
+program
+  .command('config')
+  .description('Manage vulnix configuration')
+  .option('--set-key <key>', 'Set Mistral API key')
+  .option('--show-key', 'Show saved API key (masked)')
+  .option('--clear-key', 'Clear saved API key')
+  .action((options) => {
+    if (options.setKey) {
+      configManager.setApiKey(options.setKey)
+      console.log('✅ API key saved!')
+    } else if (options.showKey) {
+      const key = configManager.getApiKey()
+      if (key) {
+        console.log(`API key: ${key.substring(0, 7)}...${key.substring(key.length - 4)}`)
+      } else {
+        console.log('No API key saved')
+      }
+    } else if (options.clearKey) {
+      configManager.setApiKey('')
+      console.log('✅ API key cleared')
+    } else {
+      console.log('vulnix config options:')
+      console.log('  --set-key <key>  Set Mistral API key')
+      console.log('  --show-key        Show saved API key (masked)')
+      console.log('  --clear-key       Clear saved API key')
+    }
   })
 
 program.parse()
