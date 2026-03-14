@@ -1,64 +1,64 @@
-import { Finding, Severity } from '../types'
-import { callMistral } from './client'
-import { buildDeepScanPrompt, buildDeepScanSystemPrompt } from './prompts'
+import { Finding } from '../types'
+import { deepScanWithProgress, StreamingOptions } from './client'
+
+export interface DeepScanProgress {
+  currentFile: number
+  totalFiles: number
+  currentFileName?: string
+}
 
 export async function deepScan(
   files: { path: string; content: string }[],
-  apiKey: string
+  apiKey: string,
+  onProgress?: (progress: DeepScanProgress) => void,
+  onThinking?: (thought: string) => void,
+  abortSignal?: AbortSignal
 ): Promise<Finding[]> {
   const allFindings: Finding[] = []
+  const totalFiles = files.length
 
-  for (const file of files) {
+  for (let i = 0; i < files.length; i++) {
+    if (abortSignal?.aborted) break
+    
+    const file = files[i]
+    
+    if (onProgress) {
+      onProgress({
+        currentFile: i + 1,
+        totalFiles,
+        currentFileName: file.path
+      })
+    }
+
+    if (onThinking) {
+      onThinking(`🧠 Deep scanning file ${i + 1}/${totalFiles}`)
+      onThinking(`📂 ${file.path}`)
+    }
+
     try {
-      const prompt = buildDeepScanPrompt(file.content, file.path)
-      
-      const response = await callMistral(apiKey, [
-        { role: 'system', content: buildDeepScanSystemPrompt() },
-        { role: 'user', content: prompt }
-      ])
+      const options: StreamingOptions = {
+        onThinking,
+        signal: abortSignal
+      }
 
-      const issues = parseDeepScanResponse(response.explanation, file.path)
-      allFindings.push(...issues)
-    } catch {
-      // Skip files that fail
+      const issues = await deepScanWithProgress(file, apiKey, options)
+      
+      if (issues.length > 0) {
+        if (onThinking) {
+          onThinking(`⚠️ Found ${issues.length} issue(s) in ${file.path}`)
+        }
+        allFindings.push(...issues)
+      } else {
+        if (onThinking) {
+          onThinking(`✓ ${file.path} - No issues found`)
+        }
+      }
+    } catch (error) {
+      if (onThinking) {
+        onThinking(`❌ Error scanning ${file.path}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+      }
     }
   }
 
   return allFindings
-}
-
-function parseDeepScanResponse(content: string, filePath: string): Finding[] {
-  try {
-    const jsonMatch = content.match(/\[[\s\S]*\]/)
-    if (!jsonMatch) return []
-
-    const issues = JSON.parse(jsonMatch[0]) as any[]
-    
-    return issues.map((issue: any) => ({
-      id: `${filePath}:${issue.line}:deepscan`,
-      title: issue.title,
-      severity: mapSeverity(issue.severity),
-      file: filePath,
-      line: issue.line,
-      code: '',
-      message: issue.explanation,
-      fix: issue.fix,
-      category: issue.category || 'deepscan',
-      aiStatus: 'confirmed' as const,
-      aiExplanation: issue.explanation,
-      aiFix: issue.fix
-    }))
-  } catch {
-    return []
-  }
-}
-
-function mapSeverity(severity: string): Severity {
-  const map: Record<string, Severity> = {
-    critical: 'critical',
-    high: 'high',
-    medium: 'medium',
-    low: 'low'
-  }
-  return map[severity] || 'medium'
 }
